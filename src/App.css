@@ -443,6 +443,101 @@ body {
 .badge-green { background: #dcfce7; color: #15803d; }
 .badge-gray { background: #f1f5f9; color: #64748b; }
 
+/* ==============================
+   Info tooltip（ⓘボタン）
+   ============================== */
+.info-tooltip {
+  position: relative;
+  display: inline-block;
+  margin-left: 3px;
+  vertical-align: middle;
+}
+
+.info-tooltip-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  color: var(--color-primary);
+  background: var(--color-highlight-bg);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.info-tooltip-trigger::-webkit-details-marker { display: none; }
+.info-tooltip-trigger:hover { background: #dbeafe; }
+
+.info-tooltip[open] .info-tooltip-trigger {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.info-tooltip-content {
+  position: absolute;
+  z-index: 30;
+  top: 20px;
+  left: 0;
+  width: min(360px, 82vw);
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  padding: 12px 14px;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--color-text);
+  white-space: normal;
+  text-align: left;
+}
+
+.explain p { margin-bottom: 6px; }
+
+.explain-heading {
+  font-weight: 700;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.explain-formula {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.7rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.explain-note {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  margin-top: 6px;
+}
+
+.explain-refs {
+  list-style: disc;
+  padding-left: 18px;
+}
+
+.explain-refs a {
+  color: var(--color-primary-dark);
+}
+
+.section-note {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: 8px;
+}
+
 .result-section h3 {
   font-size: 0.875rem;
   font-weight: 600;

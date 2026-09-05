@@ -115,8 +115,8 @@ function App() {
           <div className="results">
             <ComparisonSection resultBefore={resultBefore} resultAfter={resultAfter} />
             <div className="results-grid">
-              <ResultSection result={resultBefore} title={`変更前（週${params.primaryWorkDaysBefore}日勤務）`} />
-              <ResultSection result={resultAfter} title={`変更後（週${params.primaryWorkDaysAfter}日勤務）`} />
+              <ResultSection result={resultBefore} params={params} title={`変更前（週${params.primaryWorkDaysBefore}日勤務）`} />
+              <ResultSection result={resultAfter} params={params} title={`変更後（週${params.primaryWorkDaysAfter}日勤務）`} />
             </div>
           </div>
         </div>

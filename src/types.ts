@@ -21,6 +21,55 @@ export type HouseholdMember = 'primary' | 'spouse';
 /** 比較する2つのシナリオ */
 export type Scenario = 'before' | 'after';
 
+/** 社会保険の加入区分（説明パネルで、どのルールが適用されたかを判別するために使う） */
+export type InsuranceBranch = 'socialInsuranceDependent' | 'employerInsurance' | 'nationalInsurance';
+
+/** 所得税・住民税の計算過程の中間値（説明パネルで数式に実数を当てはめて表示するために使う） */
+export interface TaxBreakdown {
+  /** 年収（月給×12＋賞与） */
+  annualBase: number;
+  /** 給与所得控除（年額） */
+  salaryDeduction: number;
+  /** 社会保険料控除（年額、健康保険＋厚生年金＋雇用保険の月額×12） */
+  socialInsuranceDeductionAnnual: number;
+  /** 基礎控除（年額） */
+  basicDeduction: number;
+  /** 配偶者控除・扶養控除の合計（年額） */
+  additionalDeduction: number;
+  /** 課税所得（年額） */
+  taxableIncome: number;
+}
+
+/** 所得税の計算過程（住民税と異なり復興特別所得税の上乗せがある） */
+export interface IncomeTaxBreakdown extends TaxBreakdown {
+  /** 課税所得に累進税率を適用した年税額（復興特別所得税を上乗せする前） */
+  annualTaxBeforeSurtax: number;
+  /** 復興特別所得税（2.1%）を上乗せした年税額 */
+  annualTaxWithSurtax: number;
+}
+
+/** 住民税の計算過程（所得割＋均等割） */
+export interface ResidenceTaxBreakdown extends TaxBreakdown {
+  /** 所得割＋均等割の年税額 */
+  annualResidenceTax: number;
+}
+
+/** 1人分の計算過程（説明パネル用） */
+export interface PersonCalculationBreakdown {
+  /** 月給（基本給） */
+  monthlyBaseSalary: number;
+  /** 年間賞与合計 */
+  annualBonus: number;
+  /** 年収（月給×12＋賞与、または年収一括入力の生値） */
+  annualIncome: number;
+  /** 週あたり所定労働時間 */
+  weeklyHours: number;
+  /** 社会保険（健康保険・厚生年金）の加入区分 */
+  insuranceBranch: InsuranceBranch;
+  incomeTax: IncomeTaxBreakdown;
+  residenceTax: ResidenceTaxBreakdown;
+}
+
 /** アプリケーションの入力パラメーター */
 export interface SimulatorParams {
   // ===== 収入の入力方法 =====
@@ -146,6 +195,14 @@ export interface SimulationResult {
   socialInsuranceDependent: boolean;
   /** 扶養候補者が税の扶養（配偶者控除）対象か */
   taxDependent: boolean;
+  /** 扶養候補者の年収（扶養判定に使われた値） */
+  dependentCandidateAnnualIncome: number;
+  /** 扶養候補者の週あたり所定労働時間（扶養判定に使われた値） */
+  dependentCandidateWeeklyHours: number;
+
+  // ===== 計算過程（説明パネル用） =====
+  primaryCalculation: PersonCalculationBreakdown;
+  spouseCalculation: PersonCalculationBreakdown;
 
   // ===== 支出 =====
   /** 共通支出合計（月額） */

@@ -2,16 +2,122 @@
  * シミュレーション計算メイン
  */
 import {
+  BASIC_DEDUCTION_INCOME_TAX,
+  BASIC_DEDUCTION_RESIDENCE_TAX,
   calcAnnualIncome,
+  calcIncomeTaxFromTaxable,
   calcPersonMonthlyIncome,
+  calcSalaryDeduction,
   DEPENDENT_DEDUCTION_INCOME_TAX,
   DEPENDENT_DEDUCTION_RESIDENCE_TAX,
   isDependentSpouse,
+  RECONSTRUCTION_SURTAX_RATE,
+  RESIDENCE_TAX_INCOME_RATE,
+  RESIDENCE_TAX_PER_CAPITA,
+  SOCIAL_INSURANCE_WEEKLY_HOURS_THRESHOLD,
   SPOUSE_DEDUCTION_INCOME_TAX,
   SPOUSE_DEDUCTION_RESIDENCE_TAX,
   weeklyWorkHours,
 } from './calculator';
-import type { Scenario, SimulationResult, SimulatorParams } from './types';
+import type { MonthlyIncome } from './calculator';
+import type {
+  IncomeTaxBreakdown,
+  InsuranceBranch,
+  PersonCalculationBreakdown,
+  ResidenceTaxBreakdown,
+  Scenario,
+  SimulationResult,
+  SimulatorParams,
+} from './types';
+
+/**
+ * 所得税・住民税の中間値（課税所得など）を組み立てる。
+ *
+ * calcMonthlyIncomeTax/calcMonthlyResidenceTax と同じ定数・同じ関数
+ * （calcSalaryDeduction, calcIncomeTaxFromTaxable）を使って再計算するため、
+ * 最終的な月額（income.deductions.incomeTax/residenceTax）とは常に一致する。
+ * 一致することは calculator.test.ts で検証している。
+ */
+function buildTaxBreakdown(
+  monthlyBaseSalary: number,
+  income: MonthlyIncome,
+  additionalDeduction: { incomeTax: number; residenceTax: number },
+): { incomeTax: IncomeTaxBreakdown; residenceTax: ResidenceTaxBreakdown } {
+  const annualBase = monthlyBaseSalary * 12;
+  const salaryDeduction = calcSalaryDeduction(annualBase);
+  const { healthInsurance, welfarePension, employmentInsurance } = income.deductions;
+  const socialInsuranceDeductionAnnual = (healthInsurance + welfarePension + employmentInsurance) * 12;
+
+  const incomeTaxTaxableIncome = Math.max(
+    0,
+    annualBase -
+      salaryDeduction -
+      socialInsuranceDeductionAnnual -
+      BASIC_DEDUCTION_INCOME_TAX -
+      additionalDeduction.incomeTax,
+  );
+  const annualTaxBeforeSurtax = calcIncomeTaxFromTaxable(incomeTaxTaxableIncome);
+  const annualTaxWithSurtax = Math.floor(annualTaxBeforeSurtax * (1 + RECONSTRUCTION_SURTAX_RATE));
+
+  const residenceTaxTaxableIncome = Math.max(
+    0,
+    annualBase -
+      salaryDeduction -
+      socialInsuranceDeductionAnnual -
+      BASIC_DEDUCTION_RESIDENCE_TAX -
+      additionalDeduction.residenceTax,
+  );
+  const annualResidenceTax = Math.floor(residenceTaxTaxableIncome * RESIDENCE_TAX_INCOME_RATE) + RESIDENCE_TAX_PER_CAPITA;
+
+  return {
+    incomeTax: {
+      annualBase,
+      salaryDeduction,
+      socialInsuranceDeductionAnnual,
+      basicDeduction: BASIC_DEDUCTION_INCOME_TAX,
+      additionalDeduction: additionalDeduction.incomeTax,
+      taxableIncome: incomeTaxTaxableIncome,
+      annualTaxBeforeSurtax,
+      annualTaxWithSurtax,
+    },
+    residenceTax: {
+      annualBase,
+      salaryDeduction,
+      socialInsuranceDeductionAnnual,
+      basicDeduction: BASIC_DEDUCTION_RESIDENCE_TAX,
+      additionalDeduction: additionalDeduction.residenceTax,
+      taxableIncome: residenceTaxTaxableIncome,
+      annualResidenceTax,
+    },
+  };
+}
+
+function insuranceBranchOf(isSocialInsuranceDependent: boolean, weeklyHours: number): InsuranceBranch {
+  if (isSocialInsuranceDependent) return 'socialInsuranceDependent';
+  if (weeklyHours >= SOCIAL_INSURANCE_WEEKLY_HOURS_THRESHOLD) return 'employerInsurance';
+  return 'nationalInsurance';
+}
+
+function buildPersonCalculation(
+  monthlyBaseSalary: number,
+  annualBonus: number,
+  annualIncome: number,
+  weeklyHours: number,
+  isSocialInsuranceDependent: boolean,
+  income: MonthlyIncome,
+  additionalDeduction: { incomeTax: number; residenceTax: number },
+): PersonCalculationBreakdown {
+  const { incomeTax, residenceTax } = buildTaxBreakdown(monthlyBaseSalary, income, additionalDeduction);
+  return {
+    monthlyBaseSalary,
+    annualBonus,
+    annualIncome,
+    weeklyHours,
+    insuranceBranch: insuranceBranchOf(isSocialInsuranceDependent, weeklyHours),
+    incomeTax,
+    residenceTax,
+  };
+}
 
 /**
  * 収入の入力方法（月給＋賞与／年収一括）に応じて、計算に使う
@@ -145,6 +251,25 @@ export function simulate(params: SimulatorParams, scenario: Scenario): Simulatio
   const primaryPersonalExpenses = params.primaryPersonal;
   const spousePersonalExpenses = params.spousePersonal;
 
+  const primaryCalculation = buildPersonCalculation(
+    primary.monthlySalary,
+    primary.annualBonus,
+    primary.annualIncome,
+    primaryWeeklyHours,
+    primarySocialInsuranceDependent,
+    primaryIncome,
+    { incomeTax: primaryIncomeTaxDeduction, residenceTax: primaryResidenceTaxDeduction },
+  );
+  const spouseCalculation = buildPersonCalculation(
+    spouse.monthlySalary,
+    spouse.annualBonus,
+    spouse.annualIncome,
+    spouseWeeklyHours,
+    spouseSocialInsuranceDependent,
+    spouseIncome,
+    { incomeTax: spouseIncomeTaxDeduction, residenceTax: spouseResidenceTaxDeduction },
+  );
+
   const primaryMonthlyBalance = primaryIncome.netMonthly - primaryExpenseShare - primaryPersonalExpenses;
   const spouseMonthlyBalance = spouseIncome.netMonthly - spouseExpenseShare - spousePersonalExpenses;
   const householdNetMonthly = primaryIncome.netMonthly + spouseIncome.netMonthly;
@@ -177,6 +302,10 @@ export function simulate(params: SimulatorParams, scenario: Scenario): Simulatio
     dependentCandidate: params.dependentCandidate,
     socialInsuranceDependent: dependentStatus.socialInsuranceDependent,
     taxDependent: dependentStatus.taxDependent,
+    dependentCandidateAnnualIncome: candidateAnnualIncome,
+    dependentCandidateWeeklyHours: candidateWeeklyHours,
+    primaryCalculation,
+    spouseCalculation,
     totalSharedExpenses,
     spouseExpenseShare,
     primaryExpenseShare,
