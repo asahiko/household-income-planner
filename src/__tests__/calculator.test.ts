@@ -305,6 +305,21 @@ describe('収入の入力方法：年収一括入力', () => {
   });
 });
 
+describe('計算過程の内訳（説明パネル用）', () => {
+  it('所得税・住民税の内訳から導かれる年税額は、実際の月額×12と整合する', () => {
+    for (const scenario of ['before', 'after'] as const) {
+      const result = simulate(BASE_PARAMS, scenario);
+      for (const [calc, deductions] of [
+        [result.primaryCalculation, result.primaryDeductions],
+        [result.spouseCalculation, result.spouseDeductions],
+      ] as const) {
+        expect(Math.floor(calc.incomeTax.annualTaxWithSurtax / 12)).toBe(deductions.incomeTax);
+        expect(Math.floor(calc.residenceTax.annualResidenceTax / 12)).toBe(deductions.residenceTax);
+      }
+    }
+  });
+});
+
 describe('扶養控除（配偶者以外、主に子）', () => {
   it('扶養親族がいると、控除を受ける側の所得税・住民税が下がる', () => {
     const withoutDependents = simulate({ ...BASE_PARAMS, dependentsCount: 0 }, 'before');

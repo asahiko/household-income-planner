@@ -62,16 +62,23 @@ export function calcAnnualIncome(monthlyBase: number, annualBonus: number): numb
   return monthlyBase * 12 + annualBonus;
 }
 
+/** 健康保険料率（協会けんぽ 東京都 2024年度、本人負担分＝労使折半後） https://www.kyoukaikenpo.or.jp/ */
+export const HEALTH_INSURANCE_RATE = 0.0499;
+
 /**
  * 健康保険料（協会けんぽ 東京都 2024年度）
  * 標準報酬月額×9.98%（労使折半 = 4.99%）
  * https://www.kyoukaikenpo.or.jp/
  */
 export function calcHealthInsurance(monthlyBase: number): number {
-  const rate = 0.0499; // 本人負担分
   // 標準報酬月額の決定（簡略化：月給をそのまま使用）
-  return Math.floor(monthlyBase * rate);
+  return Math.floor(monthlyBase * HEALTH_INSURANCE_RATE);
 }
+
+/** 厚生年金保険料率（本人負担分＝労使折半後） */
+export const WELFARE_PENSION_RATE = 0.0915;
+/** 厚生年金保険料の対象上限（標準報酬月額） */
+export const WELFARE_PENSION_CAP = 650000;
 
 /**
  * 厚生年金保険料
@@ -79,19 +86,23 @@ export function calcHealthInsurance(monthlyBase: number): number {
  * 上限：650,000円（標準報酬月額）
  */
 export function calcWelfarePension(monthlyBase: number): number {
-  const rate = 0.0915;
-  const cappedSalary = Math.min(monthlyBase, 650000);
-  return Math.floor(cappedSalary * rate);
+  const cappedSalary = Math.min(monthlyBase, WELFARE_PENSION_CAP);
+  return Math.floor(cappedSalary * WELFARE_PENSION_RATE);
 }
+
+/** 雇用保険料率（一般の事業、労働者負担分） */
+export const EMPLOYMENT_INSURANCE_RATE = 0.006;
 
 /**
  * 雇用保険料（一般の事業）
  * 月給×0.6%（労働者負担分）
  */
 export function calcEmploymentInsurance(monthlyBase: number): number {
-  const rate = 0.006;
-  return Math.floor(monthlyBase * rate);
+  return Math.floor(monthlyBase * EMPLOYMENT_INSURANCE_RATE);
 }
+
+/** 社会保険（協会けんぽ・厚生年金）の加入義務が生じる週所定労働時間の目安 */
+export const SOCIAL_INSURANCE_WEEKLY_HOURS_THRESHOLD = 20;
 
 /** 配偶者控除額（所得税、38万円） */
 export const SPOUSE_DEDUCTION_INCOME_TAX = 380000;
@@ -106,6 +117,11 @@ export const SPOUSE_DEDUCTION_RESIDENCE_TAX = 330000;
 export const DEPENDENT_DEDUCTION_INCOME_TAX = 380000;
 /** 扶養控除額（一般の控除対象扶養親族、住民税、33万円） */
 export const DEPENDENT_DEDUCTION_RESIDENCE_TAX = 330000;
+
+/** 所得税の基礎控除（合計所得2,400万円以下） */
+export const BASIC_DEDUCTION_INCOME_TAX = 480000;
+/** 復興特別所得税率（所得税額に対して2.1%上乗せ） */
+export const RECONSTRUCTION_SURTAX_RATE = 0.021;
 
 /**
  * 所得税の月額概算
@@ -125,17 +141,15 @@ export function calcMonthlyIncomeTax(
   const salaryDeduction = calcSalaryDeduction(annualBase);
   // 社会保険料控除（年額）
   const socialInsuranceDeduction = (healthInsurance + welfarePension + employmentInsurance) * 12;
-  // 基礎控除
-  const basicDeduction = 480000;
 
   const taxableIncome = Math.max(
     0,
-    annualBase - salaryDeduction - socialInsuranceDeduction - basicDeduction - additionalDeduction,
+    annualBase - salaryDeduction - socialInsuranceDeduction - BASIC_DEDUCTION_INCOME_TAX - additionalDeduction,
   );
 
   const annualTax = calcIncomeTaxFromTaxable(taxableIncome);
   // 復興特別所得税 2.1%
-  const annualTaxWithSurtax = Math.floor(annualTax * 1.021);
+  const annualTaxWithSurtax = Math.floor(annualTax * (1 + RECONSTRUCTION_SURTAX_RATE));
   return Math.floor(annualTaxWithSurtax / 12);
 }
 
@@ -164,6 +178,13 @@ export function calcIncomeTaxFromTaxable(taxableIncome: number): number {
   return Math.floor(taxableIncome * 0.45) - 4796000;
 }
 
+/** 住民税の基礎控除（合計所得2,400万円以下） */
+export const BASIC_DEDUCTION_RESIDENCE_TAX = 430000;
+/** 住民税 所得割の税率（市町村民税6%＋道府県民税4%の合計） */
+export const RESIDENCE_TAX_INCOME_RATE = 0.1;
+/** 住民税 均等割（年額、市町村民税3,500円＋道府県民税1,500円の概算合計） */
+export const RESIDENCE_TAX_PER_CAPITA = 5000;
+
 /**
  * 住民税の月額概算
  * 前年所得に課税（概算：翌年6月〜）
@@ -181,15 +202,13 @@ export function calcMonthlyResidenceTax(
   const annualBase = monthlyBase * 12;
   const salaryDeduction = calcSalaryDeduction(annualBase);
   const socialInsuranceDeduction = (healthInsurance + welfarePension + employmentInsurance) * 12;
-  // 住民税の基礎控除は43万円
-  const basicDeduction = 430000;
 
   const taxableIncome = Math.max(
     0,
-    annualBase - salaryDeduction - socialInsuranceDeduction - basicDeduction - additionalDeduction,
+    annualBase - salaryDeduction - socialInsuranceDeduction - BASIC_DEDUCTION_RESIDENCE_TAX - additionalDeduction,
   );
 
-  const annualResidenceTax = Math.floor(taxableIncome * 0.1) + 5000;
+  const annualResidenceTax = Math.floor(taxableIncome * RESIDENCE_TAX_INCOME_RATE) + RESIDENCE_TAX_PER_CAPITA;
   return Math.floor(annualResidenceTax / 12);
 }
 
@@ -199,12 +218,19 @@ export function calcMonthlyResidenceTax(
  * 妻の年収が130万円未満、かつ週の所定労働時間が20時間未満の場合に
  * 社会保険の扶養（第3号被保険者）に入れる。
  *
- * 注：2022年10月から従業員101人以上の企業では週20時間以上・月給8.8万円以上で
- * 社会保険加入義務があるが、本シミュレーターでは基本の130万円・20時間ルールを使用。
+ * 注：企業規模要件付きで「106万円の壁」（週20時間以上・月給8.8万円以上での社会保険加入義務）が
+ * 段階的に適用拡大されてきたが（2024年10月時点で従業員51人超の企業が対象）、2026年10月に
+ * この賃金要件自体が撤廃される予定。本シミュレーターはこの106万円の壁を考慮せず、
+ * 基本の130万円・週20時間ルールのみを使用する。
  *
  * 所得税・住民税の扶養（配偶者控除）は年収103万円以下が基準。
  * ただし配偶者特別控除は150万円まで段階的に適用。
  */
+/** 社会保険の扶養（130万円の壁）の年収基準 */
+export const SOCIAL_INSURANCE_DEPENDENT_INCOME_THRESHOLD = 1300000;
+/** 税の扶養・配偶者控除（103万円の壁）の年収基準 */
+export const TAX_DEPENDENT_INCOME_THRESHOLD = 1030000;
+
 export function isDependentSpouse(
   wifeAnnualIncome: number,
   wifeWeeklyHours: number,
@@ -213,8 +239,10 @@ export function isDependentSpouse(
   taxDependent: boolean; // 配偶者控除の対象（103万円の壁）
   spouseSpecialDeductionApplicable: boolean; // 配偶者特別控除（〜150万円）
 } {
-  const socialInsuranceDependent = wifeAnnualIncome < 1300000 && wifeWeeklyHours < 20;
-  const taxDependent = wifeAnnualIncome <= 1030000;
+  const socialInsuranceDependent =
+    wifeAnnualIncome < SOCIAL_INSURANCE_DEPENDENT_INCOME_THRESHOLD &&
+    wifeWeeklyHours < SOCIAL_INSURANCE_WEEKLY_HOURS_THRESHOLD;
+  const taxDependent = wifeAnnualIncome <= TAX_DEPENDENT_INCOME_THRESHOLD;
   const spouseSpecialDeductionApplicable = !taxDependent && wifeAnnualIncome <= 2015999;
 
   return { socialInsuranceDependent, taxDependent, spouseSpecialDeductionApplicable };
@@ -252,22 +280,33 @@ export function calcSpouseSpecialDeduction(wifeAnnualIncome: number, husbandAnnu
   return Math.floor(baseDeduction * husbandDeductionFactor);
 }
 
+/** 国民健康保険 医療分の所得割率（東京都23区内の概算） */
+export const NATIONAL_HEALTH_INSURANCE_MEDICAL_RATE = 0.0752;
+/** 国民健康保険 医療分の均等割（年額、東京都23区内の概算） */
+export const NATIONAL_HEALTH_INSURANCE_MEDICAL_FLAT = 47100;
+/** 国民健康保険 後期高齢者支援金分の所得割率（東京都23区内の概算） */
+export const NATIONAL_HEALTH_INSURANCE_SUPPORT_RATE = 0.0234;
+/** 国民健康保険 後期高齢者支援金分の均等割（年額、東京都23区内の概算） */
+export const NATIONAL_HEALTH_INSURANCE_SUPPORT_FLAT = 14700;
+
 /**
  * 国民健康保険料（扶養から外れた場合の妻の自己負担）
  * 東京都23区内の概算（所得割＋均等割）
  */
 export function calcNationalHealthInsurance(annualIncome: number): number {
   const salaryDeduction = calcSalaryDeduction(annualIncome);
-  const income = Math.max(0, annualIncome - salaryDeduction - 430000); // 基礎控除43万円
+  const income = Math.max(0, annualIncome - salaryDeduction - BASIC_DEDUCTION_RESIDENCE_TAX); // 基礎控除43万円
 
   // 医療分
-  const medicalIncome = income * 0.0752;
-  const medicalFlat = 47100;
+  const medicalIncome = income * NATIONAL_HEALTH_INSURANCE_MEDICAL_RATE;
   // 支援分
-  const supportIncome = income * 0.0234;
-  const supportFlat = 14700;
+  const supportIncome = income * NATIONAL_HEALTH_INSURANCE_SUPPORT_RATE;
   // 介護分（40歳未満は不要）
-  const annualTotal = medicalIncome + medicalFlat + supportIncome + supportFlat;
+  const annualTotal =
+    medicalIncome +
+    NATIONAL_HEALTH_INSURANCE_MEDICAL_FLAT +
+    supportIncome +
+    NATIONAL_HEALTH_INSURANCE_SUPPORT_FLAT;
   return Math.floor(annualTotal / 12);
 }
 
@@ -315,7 +354,7 @@ export function calcPersonMonthlyIncome(
     healthInsurance = 0;
     welfarePension = 0;
     employmentInsurance = 0;
-  } else if (weeklyHours >= 20) {
+  } else if (weeklyHours >= SOCIAL_INSURANCE_WEEKLY_HOURS_THRESHOLD) {
     // 週20時間以上：雇用先の社会保険に加入（協会けんぽ）
     healthInsurance = calcHealthInsurance(monthlyBaseSalary);
     welfarePension = calcWelfarePension(monthlyBaseSalary);
@@ -363,6 +402,11 @@ export function calcPersonMonthlyIncome(
   };
 }
 
+/** 賞与にかかる厚生年金保険料の対象上限（1回あたり150万円、年2回想定で×2） */
+export const BONUS_WELFARE_PENSION_CAP = 1500000 * 2;
+/** 賞与の源泉所得税率（簡易概算：前月給与に応じた税額表の代わりに一律5%として概算） */
+export const BONUS_INCOME_TAX_RATE = 0.05;
+
 /**
  * 賞与の手取り月換算（年2回を12で割る）
  * 賞与の社会保険料・源泉所得税を簡易計算
@@ -370,10 +414,10 @@ export function calcPersonMonthlyIncome(
 export function calcMonthlyBonusNet(annualBonus: number): number {
   if (annualBonus <= 0) return 0;
   // 賞与の社会保険料率は月給と同じ（標準賞与額に対して）
-  const bonusHealthIns = Math.floor(annualBonus * 0.0499);
-  const bonusPension = Math.floor(Math.min(annualBonus, 1500000 * 2) * 0.0915);
+  const bonusHealthIns = Math.floor(annualBonus * HEALTH_INSURANCE_RATE);
+  const bonusPension = Math.floor(Math.min(annualBonus, BONUS_WELFARE_PENSION_CAP) * WELFARE_PENSION_RATE);
   // 賞与の源泉税：前月の社会保険料控除後給与に対応する税率（簡易計算：5%〜）
-  const bonusTax = Math.floor(annualBonus * 0.05);
+  const bonusTax = Math.floor(annualBonus * BONUS_INCOME_TAX_RATE);
   const netBonus = annualBonus - bonusHealthIns - bonusPension - bonusTax;
   return Math.floor(netBonus / 12);
 }
