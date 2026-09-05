@@ -32,9 +32,7 @@ The app has a strict separation between pure calculation logic and UI, with no s
 
 ### Primary vs. spouse, and who can be the dependent
 
-The domain used to be modeled as literal husband/wife with a hardcoded "week 3 days → week 2 days" scenario and an assumption that the wife was always the one who might become a dependent. That's now generalized:
-
-- `primary` is whoever's work pattern is being compared before/after; `spouse`'s work pattern is fixed for the comparison. Which real person maps to which role is just a matter of which fields the user fills in — there's no gendered assumption left in the code.
+- `primary` is whoever's work pattern is being compared before/after; `spouse`'s work pattern is fixed for the comparison. Which real person maps to which role is just a matter of which fields the user fills in — there's no gendered assumption in the code.
 - `SimulatorParams.dependentCandidate` (`'primary' | 'spouse'`) says which of the two is evaluated against the 103万/130万 thresholds. `simulate.ts` resolves this once (`isDependentSpouse()` is called only for the candidate's income/hours) and derives both people's `isSocialInsuranceDependent`/spousal-deduction flags from that single resolution — evaluating both people independently was considered and rejected, because two low-income/low-hours people would then both qualify as depending on each other, which is nonsensical.
 - `SimulationResult.dependentCandidate` echoes back which side was evaluated, so `ResultSection`/`ComparisonSection` can label the dependency badges with the right person ("本人" vs "配偶者") instead of a hardcoded role name.
 
