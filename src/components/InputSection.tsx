@@ -1,8 +1,19 @@
+import { useEffect, useState } from 'react';
 import type { SimulatorParams } from '../types';
 
 interface Props {
   params: SimulatorParams;
   onChange: (params: SimulatorParams) => void;
+}
+
+// ユーザーはコンマなしで数字を入力し、表示上は自動で3桁コンマ区切りにする
+function formatWithCommas(raw: string): string {
+  const negative = raw.startsWith('-');
+  const unsigned = negative ? raw.slice(1) : raw;
+  const [intPart, ...decParts] = unsigned.split('.');
+  const formattedInt = intPart.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const decPart = decParts.length > 0 ? '.' + decParts.join('').replace(/\D/g, '') : '';
+  return (negative ? '-' : '') + formattedInt + decPart;
 }
 
 function NumInput({
@@ -12,7 +23,6 @@ function NumInput({
   unit = '円',
   min = 0,
   max,
-  step = 1000,
   hint,
 }: {
   label: string;
@@ -21,22 +31,45 @@ function NumInput({
   unit?: string;
   min?: number;
   max?: number;
-  step?: number;
   hint?: string;
 }) {
+  const [isFocused, setIsFocused] = useState(false);
+  const [text, setText] = useState(() => formatWithCommas(String(value)));
+
+  useEffect(() => {
+    if (!isFocused) {
+      setText(formatWithCommas(String(value)));
+    }
+  }, [value, isFocused]);
+
   return (
     <div className="field">
       <label className="field-label">{label}</label>
       {hint && <span className="field-hint">{hint}</span>}
       <div className="field-input-wrap">
         <input
-          type="number"
+          type="text"
+          inputMode="decimal"
           className="field-input"
-          value={value}
-          min={min}
-          max={max}
-          step={step}
-          onChange={(e) => onChange(Number(e.target.value))}
+          value={text}
+          onFocus={() => setIsFocused(true)}
+          onChange={(e) => {
+            const sanitized = e.target.value.replace(/[^0-9.\-]/g, '');
+            const formatted = formatWithCommas(sanitized);
+            setText(formatted);
+            const numeric = Number(sanitized.replace(/,/g, ''));
+            if (sanitized !== '' && sanitized !== '-' && sanitized !== '.' && !Number.isNaN(numeric)) {
+              onChange(numeric);
+            }
+          }}
+          onBlur={() => {
+            setIsFocused(false);
+            let clamped = value;
+            if (min !== undefined && clamped < min) clamped = min;
+            if (max !== undefined && clamped > max) clamped = max;
+            if (clamped !== value) onChange(clamped);
+            setText(formatWithCommas(String(clamped)));
+          }}
         />
         <span className="field-unit">{unit}</span>
       </div>
@@ -113,7 +146,6 @@ export function InputSection({ params, onChange }: Props) {
           unit="日"
           min={0}
           max={7}
-          step={1}
         />
         <NumInput
           label="週あたり勤務日数（変更後）"
@@ -122,7 +154,6 @@ export function InputSection({ params, onChange }: Props) {
           unit="日"
           min={0}
           max={7}
-          step={1}
         />
         <NumInput
           label="1日あたり勤務時間"
@@ -130,7 +161,6 @@ export function InputSection({ params, onChange }: Props) {
           onChange={(v) => set('primaryWorkHoursPerDay', v)}
           unit="時間"
           min={1}
-          step={0.5}
           hint="週の所定労働時間（20時間未満で社保扶養要件を満たす）"
         />
       </section>
@@ -185,7 +215,6 @@ export function InputSection({ params, onChange }: Props) {
           unit="日"
           min={0}
           max={7}
-          step={1}
         />
         <NumInput
           label="1日あたり勤務時間"
@@ -193,7 +222,6 @@ export function InputSection({ params, onChange }: Props) {
           onChange={(v) => set('spouseWorkHoursPerDay', v)}
           unit="時間"
           min={1}
-          step={0.5}
         />
       </section>
 
@@ -257,7 +285,6 @@ export function InputSection({ params, onChange }: Props) {
           onChange={(v) => set('dependentsCount', v)}
           unit="人"
           min={0}
-          step={1}
           hint="扶養控除（一般の控除対象扶養親族、38万円/人）を一律で適用する概算です。年齢区分（特定・老人扶養親族、16歳未満）は考慮していません"
         />
         {params.dependentsCount > 0 && (
@@ -376,7 +403,6 @@ export function InputSection({ params, onChange }: Props) {
                 type="range"
                 min={0}
                 max={100}
-                step={5}
                 value={params.spouseSharePercent}
                 onChange={(e) => set('spouseSharePercent', Number(e.target.value))}
                 className="field-range"
