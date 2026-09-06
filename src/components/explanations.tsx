@@ -329,6 +329,57 @@ export function explainDependentsDeduction(): ReactNode {
   );
 }
 
+/** 保育料（税額連動ブラケットモード）の説明 */
+export function explainChildcareFee(result: SimulationResult, params: SimulatorParams): ReactNode {
+  if (params.childcareFeeMode === 'fixed') {
+    return (
+      <Explanation>
+        <p>保育料は固定額として入力された金額をそのまま使用しています。</p>
+      </Explanation>
+    );
+  }
+
+  const sorted = [...params.childcareFeeBrackets].sort((a, b) => a.incomeLevyFrom - b.incomeLevyFrom);
+  // simulate.ts の lookupChildcareFee と同じロジックで「適用された行」を特定する
+  const matching = sorted.filter((row) => row.incomeLevyFrom <= result.householdMunicipalIncomeLevy);
+  const appliedRow = matching.length > 0 ? matching[matching.length - 1] : undefined;
+  return (
+    <Explanation>
+      <p>
+        本人・配偶者それぞれの住民税の課税所得に市町村民税所得割の税率（6%）をかけた概算の所得割額を合計し、
+        入力されたブラケット表に当てはめて保育料を決めています。
+      </p>
+      <Formula>
+        本人の所得割額（概算） = {fmtYen(result.primaryCalculation.residenceTax.taxableIncome)} × 6% = {fmtYen(result.primaryCalculation.residenceTax.municipalIncomeLevy)}
+      </Formula>
+      <Formula>
+        配偶者の所得割額（概算） = {fmtYen(result.spouseCalculation.residenceTax.taxableIncome)} × 6% = {fmtYen(result.spouseCalculation.residenceTax.municipalIncomeLevy)}
+      </Formula>
+      <Formula>
+        世帯の所得割額合計 = {fmtYen(result.primaryCalculation.residenceTax.municipalIncomeLevy)} ＋ {fmtYen(result.spouseCalculation.residenceTax.municipalIncomeLevy)} = {fmtYen(result.householdMunicipalIncomeLevy)}
+      </Formula>
+      {sorted.length === 0 ? (
+        <p className="explain-note">ブラケット表に行がないため、保育料は0円として計算されています。</p>
+      ) : (
+        <ul className="explain-refs">
+          {sorted.map((row, i) => {
+            const applied = row === appliedRow;
+            return (
+              <li key={i} className={applied ? 'explain-bracket-applied' : undefined}>
+                所得割額 {fmtYen(row.incomeLevyFrom)} 以上 → 保育料 {fmtYen(row.fee)}
+                {applied && '（適用）'}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="explain-note">
+        ※ 実際の市町村民税所得割額には調整控除等が反映されますが、この試算では考慮していません。正確な金額は住民税決定通知書でご確認ください。
+      </p>
+    </Explanation>
+  );
+}
+
 /** 支出分担方法の説明 */
 export function explainExpenseSharing(result: SimulationResult, params: SimulatorParams): ReactNode {
   if (params.sharingMethod === 'percentage') {

@@ -15,6 +15,22 @@ export type FixedTransferDirection = 'spouseToPrimary' | 'primaryToSpouse';
 /** 収入の入力方法：月給＋賞与で入力するか、年収を一括で入力するか */
 export type IncomeInputMode = 'monthlyPlusBonus' | 'annual';
 
+/** 保育料の入力方法：固定額を入力するか、世帯の所得割額に連動したブラケット表で決めるか */
+export type ChildcareFeeMode = 'fixed' | 'bracket';
+
+/**
+ * 保育料ブラケット表の1行。
+ * 「所得割額が incomeLevyFrom 円以上」の行のうち、最も incomeLevyFrom が大きい行が適用される
+ * （多くの自治体の保育料表が「○○円以上△△円未満」で書かれているのに合わせた、下限値を保持する方式）。
+ * 配列は incomeLevyFrom の昇順に並んでいる前提（sanitizeParams・編集UI双方でソートして保証する）。
+ */
+export interface ChildcareFeeBracket {
+  /** この行が適用される世帯の所得割額（年額、円）の下限 */
+  incomeLevyFrom: number;
+  /** 該当する場合の保育料（月額、円） */
+  fee: number;
+}
+
 /** 本人・配偶者のどちらを指すか（扶養候補や扶養控除の受け手の指定に使う） */
 export type HouseholdMember = 'primary' | 'spouse';
 
@@ -52,6 +68,12 @@ export interface IncomeTaxBreakdown extends TaxBreakdown {
 export interface ResidenceTaxBreakdown extends TaxBreakdown {
   /** 所得割＋均等割の年税額 */
   annualResidenceTax: number;
+  /**
+   * 市町村民税所得割額の概算（年額）。保育料の税額連動ブラケット判定に使う値。
+   * 道府県民税分（住民税所得割10%のうち4%）を除いた市町村民税分（6%）のみを、
+   * 調整控除を考慮せずに課税所得へ掛けた概算値（calcMunicipalIncomeLevy参照）。
+   */
+  municipalIncomeLevy: number;
 }
 
 /** 1人分の計算過程（説明パネル用） */
@@ -129,8 +151,17 @@ export interface SimulatorParams {
   utilities: number;
   /** 食費（月額）円 */
   food: number;
-  /** 学費・保育料（月額）円 */
-  childcareEducation: number;
+  /** 学費（月額）円 */
+  education: number;
+  /** 保育料の入力方法 */
+  childcareFeeMode: ChildcareFeeMode;
+  /** 保育料（固定額、月額）円。childcareFeeMode = 'fixed' のとき使用 */
+  childcareFeeFixed: number;
+  /**
+   * 保育料ブラケット表。childcareFeeMode = 'bracket' のとき使用。
+   * 世帯（本人＋配偶者）の所得割額の合計をこの表に当てはめて保育料を決める。
+   */
+  childcareFeeBrackets: ChildcareFeeBracket[];
   /** 通信費（月額）円 */
   communication: number;
   /** その他の固定費（月額）円 */
@@ -205,6 +236,10 @@ export interface SimulationResult {
   spouseCalculation: PersonCalculationBreakdown;
 
   // ===== 支出 =====
+  /** 世帯の所得割額合計（年額、円）。保育料の税額連動ブラケット判定に使った値 */
+  householdMunicipalIncomeLevy: number;
+  /** 保育料（月額）。固定額モードならそのまま、ブラケットモードなら判定結果 */
+  childcareFee: number;
   /** 共通支出合計（月額） */
   totalSharedExpenses: number;
   /** 配偶者の負担額（共通支出） */

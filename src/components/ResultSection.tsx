@@ -3,6 +3,7 @@ import type { SimulationResult, SimulatorParams } from '../types';
 import { fmtYen as fmt, fmtYenDiff as fmtDiff } from '../format';
 import { InfoTooltip } from './InfoTooltip';
 import {
+  explainChildcareFee,
   explainDependentStatus,
   explainDependentsDeduction,
   explainExpenseSharing,
@@ -189,6 +190,13 @@ export function ResultSection({ result, title, params }: Props) {
       <table className="result-table">
         <tbody>
           <Row label="共通支出合計" value={fmt(result.totalSharedExpenses)} />
+          <Row
+            label="　うち保育料"
+            value={fmt(result.childcareFee)}
+            info={
+              <InfoTooltip label="保育料の計算について">{explainChildcareFee(result, params)}</InfoTooltip>
+            }
+          />
           <Row
             label="　配偶者の負担"
             value={fmt(result.spouseExpenseShare)}

@@ -72,4 +72,46 @@ describe('sanitizeParams', () => {
     const sanitized = sanitizeParams({ ...DEFAULT_PARAMS, dependentsCount: '2' });
     expect(sanitized.dependentsCount).toBe(DEFAULT_PARAMS.dependentsCount);
   });
+
+  it('childcareFeeMode の不正値はデフォルトにフォールバックし、正しい値は保持される', () => {
+    const invalid = sanitizeParams({ ...DEFAULT_PARAMS, childcareFeeMode: 'unknown' });
+    expect(invalid.childcareFeeMode).toBe(DEFAULT_PARAMS.childcareFeeMode);
+
+    const valid = sanitizeParams({ ...DEFAULT_PARAMS, childcareFeeMode: 'bracket' });
+    expect(valid.childcareFeeMode).toBe('bracket');
+  });
+
+  it('childcareFeeBrackets：配列でない値はデフォルトの表にフォールバックする', () => {
+    const sanitized = sanitizeParams({ ...DEFAULT_PARAMS, childcareFeeBrackets: 'not an array' });
+    expect(sanitized.childcareFeeBrackets).toEqual(DEFAULT_PARAMS.childcareFeeBrackets);
+  });
+
+  it('childcareFeeBrackets：空配列（ユーザーが全行削除した状態）はそのまま保持する', () => {
+    const sanitized = sanitizeParams({ ...DEFAULT_PARAMS, childcareFeeBrackets: [] });
+    expect(sanitized.childcareFeeBrackets).toEqual([]);
+  });
+
+  it('childcareFeeBrackets：不正な行を取り除き、incomeLevyFrom昇順にソートする', () => {
+    const sanitized = sanitizeParams({
+      ...DEFAULT_PARAMS,
+      childcareFeeBrackets: [
+        { incomeLevyFrom: 200000, fee: 50000 },
+        { incomeLevyFrom: 'bad', fee: 10000 }, // 数値でない → 除外
+        { incomeLevyFrom: -1, fee: 10000 }, // 負の値 → 除外
+        { incomeLevyFrom: 0, fee: 30000 },
+      ],
+    });
+    expect(sanitized.childcareFeeBrackets).toEqual([
+      { incomeLevyFrom: 0, fee: 30000 },
+      { incomeLevyFrom: 200000, fee: 50000 },
+    ]);
+  });
+
+  it('childcareFeeBrackets：行はあるが全て不正な場合はデフォルトにフォールバックする', () => {
+    const sanitized = sanitizeParams({
+      ...DEFAULT_PARAMS,
+      childcareFeeBrackets: [{ incomeLevyFrom: 'bad', fee: 'also bad' }],
+    });
+    expect(sanitized.childcareFeeBrackets).toEqual(DEFAULT_PARAMS.childcareFeeBrackets);
+  });
 });

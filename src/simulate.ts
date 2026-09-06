@@ -6,6 +6,7 @@ import {
   BASIC_DEDUCTION_RESIDENCE_TAX,
   calcAnnualIncome,
   calcIncomeTaxFromTaxable,
+  calcMunicipalIncomeLevy,
   calcPersonMonthlyIncome,
   calcSalaryDeduction,
   DEPENDENT_DEDUCTION_INCOME_TAX,
@@ -21,6 +22,7 @@ import {
 } from './calculator';
 import type { MonthlyIncome } from './calculator';
 import type {
+  ChildcareFeeBracket,
   IncomeTaxBreakdown,
   InsuranceBranch,
   PersonCalculationBreakdown,
@@ -68,6 +70,7 @@ function buildTaxBreakdown(
       additionalDeduction.residenceTax,
   );
   const annualResidenceTax = Math.floor(residenceTaxTaxableIncome * RESIDENCE_TAX_INCOME_RATE) + RESIDENCE_TAX_PER_CAPITA;
+  const municipalIncomeLevy = calcMunicipalIncomeLevy(residenceTaxTaxableIncome);
 
   return {
     incomeTax: {
@@ -88,8 +91,27 @@ function buildTaxBreakdown(
       additionalDeduction: additionalDeduction.residenceTax,
       taxableIncome: residenceTaxTaxableIncome,
       annualResidenceTax,
+      municipalIncomeLevy,
     },
   };
+}
+
+/**
+ * 世帯の所得割額合計を保育料ブラケット表に当てはめて保育料（月額）を求める。
+ * 「所得割額がincomeLevyFrom円以上」に該当する行のうち、incomeLevyFromが最大の行を採用する
+ * （表の並び順には依存しない。編集中の一時的な並び崩れでも正しく判定できるようにするため）。
+ * 該当する行がない場合（表が空、または最小の下限より所得割額が低い場合）は0円とする。
+ */
+function lookupChildcareFee(householdMunicipalIncomeLevy: number, brackets: ChildcareFeeBracket[]): number {
+  let fee = 0;
+  let bestFrom = -Infinity;
+  for (const bracket of brackets) {
+    if (householdMunicipalIncomeLevy >= bracket.incomeLevyFrom && bracket.incomeLevyFrom > bestFrom) {
+      bestFrom = bracket.incomeLevyFrom;
+      fee = bracket.fee;
+    }
+  }
+  return fee;
 }
 
 function insuranceBranchOf(isSocialInsuranceDependent: boolean, weeklyHours: number): InsuranceBranch {
@@ -222,14 +244,36 @@ export function simulate(params: SimulatorParams, scenario: Scenario): Simulatio
     spouseResidenceTaxDeduction,
   );
 
+  const primaryCalculation = buildPersonCalculation(
+    primary.monthlySalary,
+    primary.annualBonus,
+    primary.annualIncome,
+    primaryWeeklyHours,
+    primarySocialInsuranceDependent,
+    primaryIncome,
+    { incomeTax: primaryIncomeTaxDeduction, residenceTax: primaryResidenceTaxDeduction },
+  );
+  const spouseCalculation = buildPersonCalculation(
+    spouse.monthlySalary,
+    spouse.annualBonus,
+    spouse.annualIncome,
+    spouseWeeklyHours,
+    spouseSocialInsuranceDependent,
+    spouseIncome,
+    { incomeTax: spouseIncomeTaxDeduction, residenceTax: spouseResidenceTaxDeduction },
+  );
+
+  // 保育料：固定額 or 世帯の所得割額合計をブラケット表に当てはめて決定
+  const householdMunicipalIncomeLevy =
+    primaryCalculation.residenceTax.municipalIncomeLevy + spouseCalculation.residenceTax.municipalIncomeLevy;
+  const childcareFee =
+    params.childcareFeeMode === 'fixed'
+      ? params.childcareFeeFixed
+      : lookupChildcareFee(householdMunicipalIncomeLevy, params.childcareFeeBrackets);
+
   // 共通支出の計算
   const totalSharedExpenses =
-    params.rent +
-    params.utilities +
-    params.food +
-    params.childcareEducation +
-    params.communication +
-    params.otherFixed;
+    params.rent + params.utilities + params.food + params.education + childcareFee + params.communication + params.otherFixed;
 
   // 支出分担
   let spouseExpenseShare: number;
@@ -250,25 +294,6 @@ export function simulate(params: SimulatorParams, scenario: Scenario): Simulatio
 
   const primaryPersonalExpenses = params.primaryPersonal;
   const spousePersonalExpenses = params.spousePersonal;
-
-  const primaryCalculation = buildPersonCalculation(
-    primary.monthlySalary,
-    primary.annualBonus,
-    primary.annualIncome,
-    primaryWeeklyHours,
-    primarySocialInsuranceDependent,
-    primaryIncome,
-    { incomeTax: primaryIncomeTaxDeduction, residenceTax: primaryResidenceTaxDeduction },
-  );
-  const spouseCalculation = buildPersonCalculation(
-    spouse.monthlySalary,
-    spouse.annualBonus,
-    spouse.annualIncome,
-    spouseWeeklyHours,
-    spouseSocialInsuranceDependent,
-    spouseIncome,
-    { incomeTax: spouseIncomeTaxDeduction, residenceTax: spouseResidenceTaxDeduction },
-  );
 
   const primaryMonthlyBalance = primaryIncome.netMonthly - primaryExpenseShare - primaryPersonalExpenses;
   const spouseMonthlyBalance = spouseIncome.netMonthly - spouseExpenseShare - spousePersonalExpenses;
@@ -306,6 +331,8 @@ export function simulate(params: SimulatorParams, scenario: Scenario): Simulatio
     dependentCandidateWeeklyHours: candidateWeeklyHours,
     primaryCalculation,
     spouseCalculation,
+    householdMunicipalIncomeLevy,
+    childcareFee,
     totalSharedExpenses,
     spouseExpenseShare,
     primaryExpenseShare,

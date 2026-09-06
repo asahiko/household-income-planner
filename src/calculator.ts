@@ -184,6 +184,20 @@ export const BASIC_DEDUCTION_RESIDENCE_TAX = 430000;
 export const RESIDENCE_TAX_INCOME_RATE = 0.1;
 /** 住民税 均等割（年額、市町村民税3,500円＋道府県民税1,500円の概算合計） */
 export const RESIDENCE_TAX_PER_CAPITA = 5000;
+/**
+ * 市町村民税所得割の税率（6%）。RESIDENCE_TAX_INCOME_RATE（10%）のうち道府県民税分（4%）を除いたもの。
+ * 保育料の税額連動ブラケット表は多くの自治体で「市町村民税所得割額」を基準にしているため、
+ * 住民税所得割の課税所得にこの税率だけをかけて概算する（実際にある調整控除は考慮しない）。
+ */
+export const MUNICIPAL_RESIDENCE_TAX_INCOME_RATE = 0.06;
+
+/**
+ * 市町村民税所得割額の概算（年額）。保育料ブラケットの判定に使う。
+ * @param residenceTaxTaxableIncome 住民税の課税所得（年額）。calcMonthlyResidenceTaxと同じ課税所得を使うこと
+ */
+export function calcMunicipalIncomeLevy(residenceTaxTaxableIncome: number): number {
+  return Math.floor(residenceTaxTaxableIncome * MUNICIPAL_RESIDENCE_TAX_INCOME_RATE);
+}
 
 /**
  * 住民税の月額概算

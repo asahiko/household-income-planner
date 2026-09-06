@@ -10,7 +10,8 @@ import {
   weeklyWorkHours,
 } from '../calculator';
 import { simulate } from '../simulate';
-import type { SimulatorParams } from '../types';
+import { calcMunicipalIncomeLevy } from '../calculator';
+import type { ChildcareFeeBracket, SimulatorParams } from '../types';
 
 describe('給与所得控除', () => {
   it('年収162.5万円以下は55万円', () => {
@@ -137,7 +138,10 @@ const BASE_PARAMS: SimulatorParams = {
   rent: 120000,
   utilities: 20000,
   food: 60000,
-  childcareEducation: 50000,
+  education: 50000,
+  childcareFeeMode: 'fixed',
+  childcareFeeFixed: 0,
+  childcareFeeBrackets: [],
   communication: 15000,
   otherFixed: 30000,
   primaryPersonal: 20000,
@@ -354,5 +358,74 @@ describe('扶養控除（配偶者以外、主に子）', () => {
     const claimedBySpouse = simulate({ ...BASE_PARAMS, dependentsCount: 0, dependentsClaimedBy: 'spouse' }, 'before');
 
     expect(claimedByPrimary).toEqual(claimedBySpouse);
+  });
+});
+
+describe('市町村民税所得割額の概算', () => {
+  it('課税所得×6%（1円未満切り捨て）', () => {
+    expect(calcMunicipalIncomeLevy(1000000)).toBe(60000);
+    expect(calcMunicipalIncomeLevy(1000001)).toBe(60000); // 60000.06 → 切り捨て
+  });
+});
+
+describe('保育料（税額連動ブラケットモード）', () => {
+  const brackets: ChildcareFeeBracket[] = [
+    { incomeLevyFrom: 0, fee: 30000 },
+    { incomeLevyFrom: 200000, fee: 50000 },
+  ];
+
+  it('固定額モードでは params.childcareFeeFixed をそのまま使う', () => {
+    const result = simulate({ ...BASE_PARAMS, childcareFeeMode: 'fixed', childcareFeeFixed: 12345 }, 'before');
+    expect(result.childcareFee).toBe(12345);
+  });
+
+  it('ブラケットモードでは世帯の所得割額合計から該当行を選ぶ', () => {
+    const result = simulate(
+      { ...BASE_PARAMS, childcareFeeMode: 'bracket', childcareFeeBrackets: brackets },
+      'before',
+    );
+    const expectedLevy =
+      result.primaryCalculation.residenceTax.municipalIncomeLevy +
+      result.spouseCalculation.residenceTax.municipalIncomeLevy;
+    expect(result.householdMunicipalIncomeLevy).toBe(expectedLevy);
+
+    const expectedFee = expectedLevy >= 200000 ? 50000 : 30000;
+    expect(result.childcareFee).toBe(expectedFee);
+  });
+
+  it('境界値：所得割額がちょうど下限と等しい行が適用される（下限は含む）', () => {
+    const result = simulate(
+      {
+        ...BASE_PARAMS,
+        childcareFeeMode: 'bracket',
+        childcareFeeBrackets: [
+          { incomeLevyFrom: 0, fee: 10000 },
+          { incomeLevyFrom: 100000, fee: 20000 },
+        ],
+      },
+      'before',
+    );
+    const levy =
+      result.primaryCalculation.residenceTax.municipalIncomeLevy +
+      result.spouseCalculation.residenceTax.municipalIncomeLevy;
+    const expectedFee = levy >= 100000 ? 20000 : 10000;
+    expect(result.childcareFee).toBe(expectedFee);
+  });
+
+  it('表が空の場合は保育料0円になる', () => {
+    const result = simulate({ ...BASE_PARAMS, childcareFeeMode: 'bracket', childcareFeeBrackets: [] }, 'before');
+    expect(result.childcareFee).toBe(0);
+  });
+
+  it('表の並び順に依存しない（降順で渡しても結果は同じ）', () => {
+    const ascending = simulate(
+      { ...BASE_PARAMS, childcareFeeMode: 'bracket', childcareFeeBrackets: brackets },
+      'before',
+    );
+    const descending = simulate(
+      { ...BASE_PARAMS, childcareFeeMode: 'bracket', childcareFeeBrackets: [...brackets].reverse() },
+      'before',
+    );
+    expect(descending.childcareFee).toBe(ascending.childcareFee);
   });
 });

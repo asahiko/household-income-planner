@@ -1,80 +1,10 @@
-import { useEffect, useState } from 'react';
 import type { SimulatorParams } from '../types';
+import { ChildcareFeeBracketEditor } from './ChildcareFeeBracketEditor';
+import { NumInput } from './NumInput';
 
 interface Props {
   params: SimulatorParams;
   onChange: (params: SimulatorParams) => void;
-}
-
-// ユーザーはコンマなしで数字を入力し、表示上は自動で3桁コンマ区切りにする
-function formatWithCommas(raw: string): string {
-  const negative = raw.startsWith('-');
-  const unsigned = negative ? raw.slice(1) : raw;
-  const [intPart, ...decParts] = unsigned.split('.');
-  const formattedInt = intPart.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  const decPart = decParts.length > 0 ? '.' + decParts.join('').replace(/\D/g, '') : '';
-  return (negative ? '-' : '') + formattedInt + decPart;
-}
-
-function NumInput({
-  label,
-  value,
-  onChange,
-  unit = '円',
-  min = 0,
-  max,
-  hint,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-  unit?: string;
-  min?: number;
-  max?: number;
-  hint?: string;
-}) {
-  const [isFocused, setIsFocused] = useState(false);
-  const [text, setText] = useState(() => formatWithCommas(String(value)));
-
-  useEffect(() => {
-    if (!isFocused) {
-      setText(formatWithCommas(String(value)));
-    }
-  }, [value, isFocused]);
-
-  return (
-    <div className="field">
-      <label className="field-label">{label}</label>
-      {hint && <span className="field-hint">{hint}</span>}
-      <div className="field-input-wrap">
-        <input
-          type="text"
-          inputMode="decimal"
-          className="field-input"
-          value={text}
-          onFocus={() => setIsFocused(true)}
-          onChange={(e) => {
-            const sanitized = e.target.value.replace(/[^0-9.\-]/g, '');
-            const formatted = formatWithCommas(sanitized);
-            setText(formatted);
-            const numeric = Number(sanitized.replace(/,/g, ''));
-            if (sanitized !== '' && sanitized !== '-' && sanitized !== '.' && !Number.isNaN(numeric)) {
-              onChange(numeric);
-            }
-          }}
-          onBlur={() => {
-            setIsFocused(false);
-            let clamped = value;
-            if (min !== undefined && clamped < min) clamped = min;
-            if (max !== undefined && clamped > max) clamped = max;
-            if (clamped !== value) onChange(clamped);
-            setText(formatWithCommas(String(clamped)));
-          }}
-        />
-        <span className="field-unit">{unit}</span>
-      </div>
-    </div>
-  );
 }
 
 export function InputSection({ params, onChange }: Props) {
@@ -318,11 +248,44 @@ export function InputSection({ params, onChange }: Props) {
         <NumInput label="家賃" value={params.rent} onChange={(v) => set('rent', v)} />
         <NumInput label="光熱費" value={params.utilities} onChange={(v) => set('utilities', v)} />
         <NumInput label="食費" value={params.food} onChange={(v) => set('food', v)} />
-        <NumInput
-          label="学費・保育料"
-          value={params.childcareEducation}
-          onChange={(v) => set('childcareEducation', v)}
-        />
+        <NumInput label="学費" value={params.education} onChange={(v) => set('education', v)} />
+        <div className="field">
+          <label className="field-label">保育料</label>
+          <div className="radio-group">
+            <label className="radio-label">
+              <input
+                type="radio"
+                name="childcareFeeMode"
+                value="fixed"
+                checked={params.childcareFeeMode === 'fixed'}
+                onChange={() => set('childcareFeeMode', 'fixed')}
+              />
+              <span>固定額を入力する</span>
+            </label>
+            <label className="radio-label">
+              <input
+                type="radio"
+                name="childcareFeeMode"
+                value="bracket"
+                checked={params.childcareFeeMode === 'bracket'}
+                onChange={() => set('childcareFeeMode', 'bracket')}
+              />
+              <span>世帯の所得割額に応じたブラケット表で決める</span>
+            </label>
+          </div>
+        </div>
+        {params.childcareFeeMode === 'fixed' ? (
+          <NumInput
+            label="保育料（固定額）"
+            value={params.childcareFeeFixed}
+            onChange={(v) => set('childcareFeeFixed', v)}
+          />
+        ) : (
+          <ChildcareFeeBracketEditor
+            brackets={params.childcareFeeBrackets}
+            onChange={(v) => set('childcareFeeBrackets', v)}
+          />
+        )}
         <NumInput
           label="通信費"
           value={params.communication}

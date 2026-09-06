@@ -2,6 +2,8 @@
  * SimulatorParams の永続化（localStorage / JSON エクスポート・インポート）
  */
 import type {
+  ChildcareFeeBracket,
+  ChildcareFeeMode,
   FixedTransferDirection,
   HouseholdMember,
   IncomeInputMode,
@@ -16,10 +18,20 @@ const SHARING_METHODS: SharingMethod[] = ['percentage', 'fixedTransfer'];
 const FIXED_TRANSFER_DIRECTIONS: FixedTransferDirection[] = ['spouseToPrimary', 'primaryToSpouse'];
 const INCOME_INPUT_MODES: IncomeInputMode[] = ['monthlyPlusBonus', 'annual'];
 const HOUSEHOLD_MEMBERS: HouseholdMember[] = ['primary', 'spouse'];
+const CHILDCARE_FEE_MODES: ChildcareFeeMode[] = ['fixed', 'bracket'];
+
+/** 保育料ブラケット表の行数の上限（壊れた/悪意のあるインポートで無限に肥大化しないための安全弁） */
+const MAX_CHILDCARE_FEE_BRACKETS = 50;
 
 type NumericKey = Exclude<
   keyof SimulatorParams,
-  'sharingMethod' | 'fixedTransferDirection' | 'incomeInputMode' | 'dependentCandidate' | 'dependentsClaimedBy'
+  | 'sharingMethod'
+  | 'fixedTransferDirection'
+  | 'incomeInputMode'
+  | 'dependentCandidate'
+  | 'dependentsClaimedBy'
+  | 'childcareFeeMode'
+  | 'childcareFeeBrackets'
 >;
 
 const NUMERIC_KEYS: NumericKey[] = [
@@ -41,7 +53,8 @@ const NUMERIC_KEYS: NumericKey[] = [
   'rent',
   'utilities',
   'food',
-  'childcareEducation',
+  'education',
+  'childcareFeeFixed',
   'communication',
   'otherFixed',
   'primaryPersonal',
@@ -52,6 +65,30 @@ const NUMERIC_KEYS: NumericKey[] = [
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+/**
+ * 保育料ブラケット表を検証する。不正な行（数値でない・負の値）は取り除き、
+ * incomeLevyFrom の昇順にソートする（simulate.ts の lookupChildcareFee はソート済み前提で判定する）。
+ * 配列でない、または全滅した場合はデフォルト値にフォールバックする。
+ */
+function sanitizeChildcareFeeBrackets(value: unknown): ChildcareFeeBracket[] {
+  if (!Array.isArray(value)) return DEFAULT_PARAMS.childcareFeeBrackets;
+  if (value.length === 0) return []; // ユーザーが全行を削除した状態（保育料は常に0円）は正当な値として扱う
+
+  const rows: ChildcareFeeBracket[] = [];
+  for (const item of value.slice(0, MAX_CHILDCARE_FEE_BRACKETS)) {
+    if (item === null || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    if (!isFiniteNumber(row.incomeLevyFrom) || !isFiniteNumber(row.fee)) continue;
+    if (row.incomeLevyFrom < 0 || row.fee < 0) continue;
+    rows.push({ incomeLevyFrom: row.incomeLevyFrom, fee: row.fee });
+  }
+
+  // 行はあったが1件も有効でなかった場合は壊れたデータとみなしてデフォルトにフォールバックする
+  if (rows.length === 0) return DEFAULT_PARAMS.childcareFeeBrackets;
+  rows.sort((a, b) => a.incomeLevyFrom - b.incomeLevyFrom);
+  return rows;
 }
 
 /**
@@ -94,6 +131,10 @@ export function sanitizeParams(input: unknown): SimulatorParams {
   if (HOUSEHOLD_MEMBERS.includes(raw.dependentsClaimedBy as HouseholdMember)) {
     result.dependentsClaimedBy = raw.dependentsClaimedBy as HouseholdMember;
   }
+  if (CHILDCARE_FEE_MODES.includes(raw.childcareFeeMode as ChildcareFeeMode)) {
+    result.childcareFeeMode = raw.childcareFeeMode as ChildcareFeeMode;
+  }
+  result.childcareFeeBrackets = sanitizeChildcareFeeBrackets(raw.childcareFeeBrackets);
 
   return result;
 }
